@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B站懒人解析</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+            background-color: #f0f2f5;
+        }
+        h1 {
+            color: #00a1d6;
+        }
+        .input-container {
+            margin: 20px 0;
+        }
+        input[type="text"] {
+            width: 80%;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #00a1d6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #00b5e5;
+        }
+        .result {
+            margin-top: 30px;
+        }
+        video {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>B站懒人解析</h1>
+    <div class="input-container">
+        <input type="text" id="inputUrl" placeholder="请输入BV号或B站视频链接" />
+        <button onclick="parseVideo()">解析</button>
+    </div>
+    <div class="result" id="result"></div>
+
+    <script>
+        // 从URL中提取BV号的函数
+        function extractBV(input) {
+            // 正则表达式匹配BV号
+            const bvRegex = /BV[0-9A-Za-z]+/;
+            const match = input.match(bvRegex);
+            return match ? match[0] : null;
+        }
+
+        // 解析视频的函数
+        async function parseVideo() {
+            const input = document.getElementById('inputUrl').value.trim();
+            if (!input) {
+                alert('请输入BV号或B站视频链接');
+                return;
+            }
+
+            // 提取BV号
+            const bv = extractBV(input);
+            if (!bv) {
+                alert('无法从输入中提取BV号');
+                return;
+            }
+
+            // 构造解析后的URL
+            const parsedUrl = window.location.origin + '/' + bv;
+            
+            // 请求视频流信息
+            try {
+                const response = await fetch(parsedUrl);
+                const data = await response.json();
+                
+                if (data.videoStream && data.videoStream.durl && data.videoStream.durl.length > 0) {
+                    const videoSrc = data.videoStream.durl[0].url;
+                    
+                    // 显示结果
+                    const resultDiv = document.getElementById('result');
+                    resultDiv.innerHTML = `
+                        <h3>解析成功！BV号：${bv}</h3>
+                        <p>解析后的URL：${parsedUrl}</p>
+                        <p>视频标题：${data.videoInfo.title}</p>
+                        <video controls width="100%">
+                            <source src="${videoSrc}" type="video/mp4">
+                            您的浏览器不支持视频播放
+                        </video>
+                    `;
+                } else {
+                    alert('无法获取视频流信息');
+                }
+            } catch (error) {
+                console.error('解析失败:', error);
+                alert('解析失败，请稍后重试');
+            }
+        }
+
+        // 页面加载时检查URL参数
+        window.onload = function() {
+            const path = window.location.pathname;
+            if (path !== '/') {
+                const input = path.substring(1); // 去除开头的斜杠
+                document.getElementById('inputUrl').value = input;
+                parseVideo();
+            }
+        };
+    </script>
+</body>
+</html>

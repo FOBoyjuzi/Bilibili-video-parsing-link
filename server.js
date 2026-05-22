@@ -1,0 +1,378 @@
+const express = require('express');
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const IP2Location = require('ip2location-nodejs');
+const app = express();
+const port = 3000;
+
+// 配置IP地理位置查询
+const ip2location = new IP2Location.IP2Location();
+// 下载免费的IP数据库并放在项目根目录
+// 这里使用在线API替代本地数据库
+
+// 日志配置
+const LOG_FILE = 'access.log';
+const LOG_RETENTION_DAYS = 3;
+let logs = [];
+let logStream;
+
+// 初始化日志系统
+function initLogs() {
+    // 检查日志文件是否存在
+    if (fs.existsSync(LOG_FILE)) {
+        // 读取现有日志
+        const logData = fs.readFileSync(LOG_FILE, 'utf8');
+        logs = logData.split('\n')
+            .filter(line => line.trim())
+            .map(line => JSON.parse(line));
+        
+        // 过滤掉超过3天的日志
+        const threeDaysAgo = Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+        logs = logs.filter(log => log.timestamp >= threeDaysAgo);
+        
+        // 重写日志文件
+        fs.writeFileSync(LOG_FILE, logs.map(log => JSON.stringify(log)).join('\n') + '\n');
+    }
+    
+    // 创建日志写入流
+    logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
+}
+
+// 添加日志
+function addLog(ip, url, userAgent) {
+    const timestamp = Date.now();
+    
+    // 构建日志对象
+    const log = {
+        timestamp,
+        ip,
+        url,
+        userAgent
+    };
+    
+    // 保存到内存
+    logs.push(log);
+    
+    // 写入文件
+    logStream.write(JSON.stringify(log) + '\n');
+    
+    // 广播日志到所有SSE客户端
+    broadcastLog(log);
+    
+    // 清理旧日志
+    const threeDaysAgo = Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const oldLogCount = logs.length;
+    logs = logs.filter(log => log.timestamp >= threeDaysAgo);
+    
+    // 如果删除了旧日志，重写日志文件
+    if (logs.length < oldLogCount) {
+        fs.writeFileSync(LOG_FILE, logs.map(log => JSON.stringify(log)).join('\n') + '\n');
+    }
+    
+    return log;
+}
+
+// SSE客户端管理
+let sseClients = new Set();
+
+// 广播日志到所有SSE客户端
+function broadcastLog(log) {
+    // 异步获取IP地理位置信息
+    getIpLocation(log.ip).then(location => {
+        const logWithLocation = {
+            ...log,
+            location
+        };
+        
+        sseClients.forEach(client => {
+            client.res.write(`data: ${JSON.stringify(logWithLocation)}
+
+`);
+        });
+    });
+}
+
+// 获取IP地理位置信息
+async function getIpLocation(ip) {
+    try {
+        // 使用ip-api.com的免费API
+        const response = await axios.get(`http://ip-api.com/json/${ip}?lang=zh-CN`);
+        return {
+            country: response.data.country,
+            region: response.data.regionName,
+            city: response.data.city,
+            isp: response.data.isp
+        };
+    } catch (error) {
+        console.error('获取IP地理位置失败:', error);
+        return {
+            country: '未知',
+            region: '未知',
+            city: '未知',
+            isp: '未知'
+        };
+    }
+}
+
+// 初始化日志
+initLogs();
+
+// 设置CORS
+app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    next();
+});
+
+
+
+// 从URL或文本中提取BV号
+function extractBV(input) {
+    const bvRegex = /BV[0-9A-Za-z]+/;
+    const match = input.match(bvRegex);
+    return match ? match[0] : null;
+}
+
+// 解析B站视频信息
+async function getVideoInfo(bvid) {
+    try {
+        const response = await axios.get(`https://api.bilibili.com/x/web-interface/view?bvid=${bvid}`);
+        return response.data.data;
+    } catch (error) {
+        console.error('获取视频信息失败:', error);
+        return null;
+    }
+}
+
+// 解析B站视频流
+async function getVideoStream(bvid) {
+    try {
+        // 获取视频信息
+        const videoInfo = await getVideoInfo(bvid);
+        if (!videoInfo) {
+            console.error('无法获取视频信息');
+            return null;
+        }
+        console.log('成功获取视频信息:', videoInfo.title);
+
+        // 获取cid
+        const cid = videoInfo.cid;
+        console.log('视频CID:', cid);
+        
+        // 尝试不同质量等级获取视频流
+        const qualityLevels = [80, 64, 32, 16];
+        let videoStreamResponse = null;
+        
+        for (const qn of qualityLevels) {
+            try {
+                console.log(`尝试获取质量等级 ${qn} 的视频流`);
+                videoStreamResponse = await axios.get(`https://api.bilibili.com/x/player/playurl`, {
+                    params: {
+                        bvid: bvid,
+                        cid: cid,
+                        qn: qn,
+                        otype: 'json',
+                        platform: 'html5'
+                    },
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                        'Referer': `https://www.bilibili.com/video/${bvid}`,
+                        'Origin': 'https://www.bilibili.com',
+                        'Accept': 'application/json, text/plain, */*'
+                    }
+                });
+                
+                if (videoStreamResponse.data.code === 0 && videoStreamResponse.data.data) {
+                    console.log(`成功获取质量等级 ${qn} 的视频流`);
+                    break;
+                }
+            } catch (error) {
+                console.error(`获取质量等级 ${qn} 的视频流失败:`, error.message);
+                continue;
+            }
+        }
+        
+        if (!videoStreamResponse) {
+            throw new Error('所有质量等级都尝试失败');
+        }
+
+        console.log('视频流API响应:', JSON.stringify(videoStreamResponse.data, null, 2));
+        return videoStreamResponse.data.data;
+    } catch (error) {
+        console.error('获取视频流失败:', error.message);
+        if (error.response) {
+            console.error('响应状态:', error.response.status);
+            console.error('响应数据:', error.response.data);
+        }
+        return null;
+    }
+}
+
+// 路由：解析视频并返回视频流（使用*捕获完整路径）
+// SSE端点：实时推送日志
+app.get('/logs/sse', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    
+    // 发送已有的日志
+    logs.forEach(log => {
+        getIpLocation(log.ip).then(location => {
+            res.write(`data: ${JSON.stringify({ ...log, location })}\n\n`);
+        });
+    });
+    
+    // 注册客户端
+    const client = {
+        res,
+        timestamp: Date.now()
+    };
+    sseClients.add(client);
+    
+    // 清理超时连接
+    req.on('close', () => {
+        sseClients.delete(client);
+    });
+});
+
+// 路由：日志网页界面
+app.get('/logs', (req, res) => {
+    const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>访问日志</title>
+    <style>
+        body { font-family: 'Microsoft YaHei', sans-serif; margin: 20px; background-color: #f5f5f5; }
+        h1 { color: #333; text-align: center; }
+        .log-container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); height: 80vh; overflow-y: auto; }
+        .log-item { padding: 15px; margin-bottom: 10px; border-left: 4px solid #4CAF50; background-color: #f9f9f9; border-radius: 4px; }
+        .log-item:nth-child(even) { background-color: #f0f0f0; }
+        .log-time { color: #666; font-size: 14px; margin-bottom: 5px; }
+        .log-ip { color: #2196F3; font-weight: bold; margin-right: 10px; }
+        .log-url { color: #333; word-break: break-all; }
+        .log-location { color: #795548; font-size: 14px; margin-top: 5px; }
+        .log-useragent { color: #666; font-size: 12px; margin-top: 5px; font-family: monospace; }
+        .log-count { text-align: center; color: #666; margin-bottom: 20px; }
+        .refresh-btn { display: block; margin: 20px auto; padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        .refresh-btn:hover { background-color: #45a049; }
+    </style>
+</head>
+<body>
+    <h1>B站视频解析服务 - 实时访问日志</h1>
+    <div class="log-count">当前日志总数: <span id="log-count">0</span></div>
+    <button class="refresh-btn" onclick="refreshPage()">刷新页面</button>
+    <div class="log-container" id="log-container"></div>
+    <script>
+        const logContainer = document.getElementById('log-container');
+        const logCount = document.getElementById('log-count');
+        let logs = [];
+        const eventSource = new EventSource('/logs/sse');
+        eventSource.onmessage = function(event) {
+            try {
+                const log = JSON.parse(event.data);
+                logs.unshift(log);
+                updateLogDisplay();
+            } catch (error) { console.error('解析日志失败:', error); }
+        };
+        function updateLogDisplay() {
+            logContainer.innerHTML = '';
+            logCount.textContent = logs.length;
+            logs.forEach(log => {
+                const logItem = document.createElement('div');
+                logItem.className = 'log-item';
+                const time = new Date(log.timestamp).toLocaleString('zh-CN');
+                const locationText = log.location.country + ' ' + log.location.region + ' ' + log.location.city + ' ' + log.location.isp;
+                logItem.innerHTML = '<div class="log-time">' + time + '</div><div><span class="log-ip">' + log.ip + '</span><span class="log-url">' + log.url + '</span></div><div class="log-location">' + locationText + '</div><div class="log-useragent">' + log.userAgent + '</div>';
+                logContainer.appendChild(logItem);
+            });
+        }
+        function refreshPage() { window.location.reload(); }
+    </script>
+</body>
+</html>`;
+    res.send(html);
+});
+
+app.get('/*', async (req, res) => {
+    const input = req.params[0]; // 获取/*捕获的完整路径
+    const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    
+    // 记录访问日志
+    addLog(ip, input, userAgent);
+    console.log('收到请求，原始输入:', input, '来自IP:', ip);
+    
+    // 提取BV号
+    const bvid = extractBV(input);
+    console.log('提取到的BV号:', bvid);
+    if (!bvid) {
+        return res.status(400).send('无法提取BV号');
+    }
+
+    // 获取视频流
+    const videoStream = await getVideoStream(bvid);
+    if (!videoStream) {
+        return res.status(500).send('获取视频流失败');
+    }
+
+    // 尝试获取完整视频流URL
+    let videoUrl = null;
+    
+    // 检查是否有durl字段（完整视频）
+    if (videoStream.durl && videoStream.durl.length > 0) {
+        videoUrl = videoStream.durl[0].url;
+    } 
+    // 检查是否有dash字段（分段视频）
+    else if (videoStream.dash && videoStream.dash.video && videoStream.dash.video.length > 0) {
+        // 对于分段视频，返回第一个视频分段的URL
+        // 注意：这种方式只能播放视频片段，完整播放需要客户端支持dash格式
+        videoUrl = videoStream.dash.video[0].baseUrl;
+    }
+
+    if (!videoUrl) {
+        return res.status(500).send('无法找到视频流URL');
+    }
+
+    console.log('获取到的视频流URL:', videoUrl);
+    
+    // 代理视频流请求，添加防盗链请求头
+    try {
+        // 设置代理请求的头部
+        const headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Safari/537.36',
+            'Referer': `https://www.bilibili.com/video/${bvid}`,
+            'Origin': 'https://www.bilibili.com',
+            'Accept': '*/*',
+            'Accept-Language': 'zh-CN,zh;q=0.9'
+        };
+        
+        // 发送代理请求获取视频流
+        const videoResponse = await axios.get(videoUrl, {
+            headers: headers,
+            responseType: 'stream' // 以流的方式获取响应
+        });
+        
+        // 设置响应头
+        res.setHeader('Content-Type', videoResponse.headers['content-type']);
+        res.setHeader('Content-Length', videoResponse.headers['content-length']);
+        res.setHeader('Content-Disposition', `inline; filename="${bvid}.mp4"`);
+        
+        // 将视频流传递给客户端
+        videoResponse.data.pipe(res);
+        
+    } catch (error) {
+        console.error('代理视频流请求失败:', error.message);
+        res.status(500).send('代理视频流请求失败');
+    }
+});
+
+// 启动服务器
+app.listen(port, () => {
+    console.log(`B站视频解析服务运行在 http://localhost:${port}`);
+    console.log(`实时日志页面: http://localhost:${port}/logs`);
+});
