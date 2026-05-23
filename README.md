@@ -3,8 +3,6 @@
 <p align="center">
   <br>
   <h1 style="display: inline-block; margin-left: 10px;">B站懒人解析服务</h1>
-  <br>
-  <br>
   <p style="font-size: 16px; color: #666;">
     ✨ <strong>VRC头显专用版</strong> · 
     📊 <strong>实时日志监控</strong> · 
@@ -12,7 +10,7 @@
   </p>
 </p>
 
-�🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸
+🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸
 
 ---
 
@@ -66,7 +64,7 @@
 
 ---
 
-## ⚠️ 免责声明
+## ⚠️ 免责声明 ⚠️
 
 <p align="center">
   <div style="background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%); padding: 20px 30px; border-radius: 15px; display: inline-block; border: 2px solid #ffeeba; max-width: 800px;">
@@ -420,12 +418,29 @@ chmod -R 755 /www/wwwroot/bilibili-parser
 pm2 startup
 pm2 save
 ```
-
 ---
 
-## 📞 技术支持
-邮箱：`xiaojuhua@rlmjz.top`
-
----
-
+## ⚠️ 最后最后叠个甲 ⚠️
+<p align="center">
+  <div style="background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%); padding: 20px 30px; border-radius: 15px; display: inline-block; border: 2px solid #ffeeba; max-width: 800px;">
+    <h3 style="color: #856404; margin-top: 0;">📋 重要声明</h3>
+    <ul style="text-align: left; font-size: 14px; line-height: 1.8;">
+      <li><strong>✅ 仅供学习娱乐</strong>：本服务仅供个人学习、研究和娱乐使用，<strong>禁止用于商业用途</strong>。</li>
+      <li><strong>✅ 版权说明</strong>：所有视频内容版权归B站及原作者所有，本服务仅提供解析技术，不存储任何视频内容。</li>
+      <li><strong>✅ 责任限制</strong>：使用本服务产生的一切法律风险由用户自行承担，作者不承担任何连带责任。</li>
+      <li><strong>✅ 合规提示</strong>：请遵守《中华人民共和国著作权法》《互联网信息服务管理办法》等相关法律法规。</li>
+      <li><strong>✅ 技术说明</strong>：
+        <ul style="margin-left: 20px;">
+          <li>数据来源：通过B站公开API获取视频信息</li>
+          <li>日志存储：访问日志仅保留3天，用于服务监控，不包含用户隐私信息</li>
+          <li>访问限制：服务提供者有权根据使用情况限制或终止服务</li>
+        </ul>
+      </li>
+      <li><strong>✅ 用户承诺</strong>：用户承诺合法使用本服务，尊重第三方版权，在获取视频后24小时内删除，不得传播或用于非法用途。</li>
+    </ul>
+    <p style="font-size: 12px; color: #666; text-align: center; margin-top: 15px; border-top: 1px dashed #ffeeba; padding-top: 10px;">
+      使用本服务即表示您已阅读并同意以上条款
+    </p>
+  </div>
+</p>
 🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸🌸
