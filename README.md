@@ -2,9 +2,7 @@
 
 <p align="center">
   <br>
-  <span style="font-size: 32px;">🎬</span>
   <h1 style="display: inline-block; margin-left: 10px;">B站懒人解析服务</h1>
-  <span style="font-size: 32px;">🎬</span>
   <br>
   <br>
   <p style="font-size: 16px; color: #666;">
